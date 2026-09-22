@@ -34,6 +34,8 @@ fun AnimeWikiScreen(
     characters: List<CharacterItem>,
     isAnimeSubscribed: (String) -> Boolean = { false },
     onToggleSubscription: (String) -> Boolean = { false },
+    isAnimeFavorite: (String) -> Boolean = { false },
+    onToggleFavorite: (AnimeItem) -> Boolean = { false },
     onSimulateEpisodePush: (AnimeItem) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -117,6 +119,7 @@ fun AnimeWikiScreen(
         ) {
             items(filteredList) { anime ->
                 val isSubscribed = isAnimeSubscribed(anime.id)
+                val isFav = isAnimeFavorite(anime.id)
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = BgCard),
@@ -145,6 +148,24 @@ fun AnimeWikiScreen(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+                            // Favorite indicator badge on card
+                            if (isFav) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(4.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xCCFB7185))
+                                        .padding(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = "مفضل",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
                         }
 
                         // Info
@@ -167,6 +188,19 @@ fun AnimeWikiScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
+                                    IconButton(
+                                        onClick = { onToggleFavorite(anime) },
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .testTag("fav_btn_${anime.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            contentDescription = if (isFav) "إزالة من المفضلة" else "إضافة للمفضلة",
+                                            tint = if (isFav) CrimsonRed else TextSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                     if (isSubscribed) {
                                         Icon(
                                             imageVector = Icons.Default.NotificationsActive,
@@ -218,6 +252,8 @@ fun AnimeWikiScreen(
                 anime = anime,
                 isSubscribed = isAnimeSubscribed(anime.id),
                 onToggleSubscription = { onToggleSubscription(anime.id) },
+                isFavorite = isAnimeFavorite(anime.id),
+                onToggleFavorite = { onToggleFavorite(anime) },
                 onSimulateEpisodePush = { onSimulateEpisodePush(anime) },
                 onDismiss = { selectedAnimeDetail = null }
             )
@@ -230,10 +266,13 @@ fun AnimeDetailDialog(
     anime: AnimeItem,
     isSubscribed: Boolean,
     onToggleSubscription: () -> Boolean,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Boolean = { false },
     onSimulateEpisodePush: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var subscribedState by remember { mutableStateOf(isSubscribed) }
+    var favoriteState by remember { mutableStateOf(isFavorite) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -258,9 +297,24 @@ fun AnimeDetailDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = anime.titleAr, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        IconButton(onClick = onDismiss) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Text(text = anime.titleAr, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val newFav = onToggleFavorite()
+                                    favoriteState = newFav
+                                },
+                                modifier = Modifier.testTag("dialog_fav_btn")
+                            ) {
+                                Icon(
+                                    imageVector = if (favoriteState) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = if (favoriteState) "إزالة من المفضلة" else "إضافة للمفضلة",
+                                    tint = if (favoriteState) CrimsonRed else TextSecondary
+                                )
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                            }
                         }
                     }
                 }

@@ -42,6 +42,7 @@ fun MoreHubScreen(
             currentUser?.role == "Owner" || currentUser?.role == "Admin"
 
     val menuItems = listOf(
+        HubMenuItem("favorites", "المفضلة والمتابعة", "قائمتك الخاصة بالأنمي والمانجا المحفوظة", Icons.Default.Favorite, CrimsonRed),
         HubMenuItem("wiki", "موسوعة الأنمي", "48+ أنمي مع إجماع المراجعين", Icons.Default.MenuBook, NeonCyan),
         HubMenuItem("games", "ساحة المعارك والألعاب", "قتال الأبطال ضد الشياطين وجوائز حقيقية", Icons.Default.SportsEsports, FlameOrange),
         HubMenuItem("store", "متجر الأوتاكو", "إطارات، شارات، وألقاب مميزة", Icons.Default.ShoppingBag, OtakuGold),

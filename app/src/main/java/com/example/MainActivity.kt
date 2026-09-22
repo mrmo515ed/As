@@ -122,6 +122,7 @@ fun AnimeBlackApp(
     val messages by animeRepo.messages.collectAsStateWithLifecycle()
     val notifications by animeRepo.notifications.collectAsStateWithLifecycle()
     val subscribedAnimeIds by animeRepo.subscribedAnimeIds.collectAsStateWithLifecycle()
+    val favorites by animeRepo.favorites.collectAsStateWithLifecycle()
 
     var currentRoute by remember { mutableStateOf(initialRoute) }
     val routeHistory = remember { mutableStateListOf(initialRoute) }
@@ -159,6 +160,7 @@ fun AnimeBlackApp(
                     user = currentUser,
                     unreadNotificationsCount = unreadNotifs,
                     onSearchClick = { navigateTo("explore") },
+                    onFavoritesClick = { navigateTo("favorites") },
                     onNotificationsClick = { navigateTo("notifications") },
                     onAdminClick = { navigateTo("admin") }
                 )
@@ -256,6 +258,14 @@ fun AnimeBlackApp(
                 "profile" -> ProfileScreen(
                     user = currentUser,
                     myPosts = posts.filter { it.authorName == currentUser?.name || it.authorId == currentUser?.id },
+                    favorites = favorites,
+                    onRemoveFavorite = { targetId ->
+                        animeRepo.removeFavorite(targetId)
+                        Toast.makeText(context, "تمت الإزالة من المفضلة", Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenAnimeWiki = { animeId ->
+                        navigateTo("wiki")
+                    },
                     onUpdateProfile = { name, username, bio ->
                         animeRepo.updateProfile(name, username, bio)
                         Toast.makeText(context, "تم تحديث الملف الشخصي", Toast.LENGTH_SHORT).show()
@@ -267,6 +277,18 @@ fun AnimeBlackApp(
                         currentRoute = "auth"
                     },
                     onLikePost = { postId -> animeRepo.toggleLikePost(postId) }
+                )
+
+                "favorites" -> FavoritesScreen(
+                    favorites = favorites,
+                    onRemoveFavorite = { targetId ->
+                        animeRepo.removeFavorite(targetId)
+                        Toast.makeText(context, "تمت الإزالة من المفضلة", Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenAnimeWiki = { animeId ->
+                        navigateTo("wiki")
+                    },
+                    onBack = { navigateBack() }
                 )
 
                 "more" -> MoreHubScreen(
@@ -283,6 +305,13 @@ fun AnimeBlackApp(
                         val msg = if (nowSubscribed) "تم تفعيل إشعارات الحلقات لهذا الأنمي 🔔" else "تم إيقاف التنبيهات"
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         nowSubscribed
+                    },
+                    isAnimeFavorite = { animeId -> animeRepo.isFavorite(animeId) },
+                    onToggleFavorite = { anime ->
+                        val isNowFav = animeRepo.toggleFavoriteAnime(anime)
+                        val msg = if (isNowFav) "تمت إضافة ${anime.titleAr} إلى المفضلة ❤️ (+15 XP)" else "تمت إزالة ${anime.titleAr} من المفضلة"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        isNowFav
                     },
                     onSimulateEpisodePush = { anime ->
                         animeRepo.broadcastEpisodeRelease(

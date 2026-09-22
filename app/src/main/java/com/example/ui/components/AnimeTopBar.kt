@@ -26,6 +26,7 @@ fun AnimeTopBar(
     user: User?,
     unreadNotificationsCount: Int,
     onSearchClick: () -> Unit,
+    onFavoritesClick: () -> Unit = {},
     onNotificationsClick: () -> Unit,
     onAdminClick: () -> Unit
 ) {
@@ -148,6 +149,20 @@ fun AnimeTopBar(
                         color = NeonPurple,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Favorites Icon
+                IconButton(
+                    onClick = onFavoritesClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("topbar_favorites_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FavoriteBorder,
+                        contentDescription = "المفضلة",
+                        tint = CrimsonRed
                     )
                 }
 

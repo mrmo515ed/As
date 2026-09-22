@@ -32,12 +32,15 @@ import com.example.ui.theme.*
 fun ProfileScreen(
     user: User?,
     myPosts: List<Post>,
+    favorites: List<com.example.data.model.FavoriteItem> = emptyList(),
+    onRemoveFavorite: (String) -> Unit = {},
+    onOpenAnimeWiki: (String) -> Unit = {},
     onUpdateProfile: (name: String, username: String, bio: String) -> Unit,
     onLogout: () -> Unit,
     onLikePost: (String) -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("منشوراتي", "الإنجازات", "الشارات")
+    val tabs = listOf("منشوراتي", "المفضلة (${favorites.size})", "الإنجازات", "الشارات")
     var showEditDialog by remember { mutableStateOf(false) }
 
     if (user == null) {
@@ -256,6 +259,34 @@ fun ProfileScreen(
                     }
                 }
                 1 -> {
+                    if (favorites.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(text = "قائمتك المفضلة فارغة حالياً.", color = TextMuted)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(text = "يمكنك إضافة الأنمي والمانجا من شاشة الموسوعة بنقرة واحدة.", color = TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        items(favorites, key = { it.id }) { favItem ->
+                            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                                FavoriteItemCard(
+                                    item = favItem,
+                                    onRemove = { onRemoveFavorite(favItem.targetId) },
+                                    onClick = { onOpenAnimeWiki(favItem.targetId) }
+                                )
+                            }
+                        }
+                    }
+                }
+                2 -> {
                     item {
                         Column(
                             modifier = Modifier
@@ -291,7 +322,7 @@ fun ProfileScreen(
                         }
                     }
                 }
-                2 -> {
+                3 -> {
                     item {
                         Column(
                             modifier = Modifier

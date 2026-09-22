@@ -75,6 +75,10 @@ class AnimeRepository(private val context: Context) {
     private val _subscribedAnimeIds = MutableStateFlow<Set<String>>(setOf("a1", "a3"))
     val subscribedAnimeIds: StateFlow<Set<String>> = _subscribedAnimeIds.asStateFlow()
 
+    // Favorites & Watchlist (Synced with Firestore)
+    private val _favorites = MutableStateFlow<List<FavoriteItem>>(emptyList())
+    val favorites: StateFlow<List<FavoriteItem>> = _favorites.asStateFlow()
+
     // Games Suite
     private val _gameCharacters = MutableStateFlow<List<GameCharacter>>(emptyList())
     val gameCharacters: StateFlow<List<GameCharacter>> = _gameCharacters.asStateFlow()
@@ -967,6 +971,84 @@ class AnimeRepository(private val context: Context) {
 
     fun setUser(user: User?) {
         _currentUser.value = user
+        if (user != null) {
+            firestoreManager.startFavoritesListener(user.id) { remoteFavs ->
+                _favorites.value = remoteFavs
+            }
+        } else {
+            _favorites.value = emptyList()
+        }
+    }
+
+    fun isFavorite(targetId: String): Boolean {
+        return _favorites.value.any { it.targetId == targetId }
+    }
+
+    fun toggleFavoriteAnime(anime: AnimeItem): Boolean {
+        val user = _currentUser.value
+        val userId = user?.id ?: "guest_user"
+        val existing = _favorites.value.find { it.targetId == anime.id }
+        return if (existing != null) {
+            // Remove from local and Firestore
+            _favorites.value = _favorites.value.filterNot { it.targetId == anime.id }
+            firestoreManager.deleteFavorite(userId, anime.id)
+            false
+        } else {
+            // Add to local and Firestore
+            val newFav = FavoriteItem(
+                id = "fav_${anime.id}",
+                userId = userId,
+                targetId = anime.id,
+                titleAr = anime.titleAr,
+                titleEn = anime.titleEn,
+                type = "anime",
+                bannerUrl = anime.bannerUrl,
+                rating = anime.rating,
+                genre = anime.genres.firstOrNull() ?: "أنمي",
+                status = anime.status,
+                addedAt = System.currentTimeMillis()
+            )
+            _favorites.value = listOf(newFav) + _favorites.value
+            firestoreManager.saveFavorite(userId, newFav)
+            addXP(15) // Reward XP for organizing watchlist
+            true
+        }
+    }
+
+    fun toggleFavoriteManga(mangaId: String, titleAr: String, titleEn: String, bannerUrl: String, rating: Double, genre: String, status: String): Boolean {
+        val user = _currentUser.value
+        val userId = user?.id ?: "guest_user"
+        val existing = _favorites.value.find { it.targetId == mangaId }
+        return if (existing != null) {
+            _favorites.value = _favorites.value.filterNot { it.targetId == mangaId }
+            firestoreManager.deleteFavorite(userId, mangaId)
+            false
+        } else {
+            val newFav = FavoriteItem(
+                id = "fav_$mangaId",
+                userId = userId,
+                targetId = mangaId,
+                titleAr = titleAr,
+                titleEn = titleEn,
+                type = "manga",
+                bannerUrl = bannerUrl,
+                rating = rating,
+                genre = genre,
+                status = status,
+                addedAt = System.currentTimeMillis()
+            )
+            _favorites.value = listOf(newFav) + _favorites.value
+            firestoreManager.saveFavorite(userId, newFav)
+            addXP(15)
+            true
+        }
+    }
+
+    fun removeFavorite(targetId: String) {
+        val user = _currentUser.value
+        val userId = user?.id ?: "guest_user"
+        _favorites.value = _favorites.value.filterNot { it.targetId == targetId }
+        firestoreManager.deleteFavorite(userId, targetId)
     }
 
     // Fallbacks

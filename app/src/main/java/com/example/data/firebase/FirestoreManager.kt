@@ -24,6 +24,7 @@ class FirestoreManager {
     private val commentsListeners = mutableMapOf<String, ListenerRegistration>()
     private var notifListener: ListenerRegistration? = null
     private var userListener: ListenerRegistration? = null
+    private var favoritesListener: ListenerRegistration? = null
 
     /**
      * Realtime listener for community posts.
@@ -402,6 +403,81 @@ class FirestoreManager {
             .addOnFailureListener { Log.w(TAG, "Failed to sync user to Firestore", it) }
     }
 
+    /**
+     * Realtime listener for user favorites stored in Firestore.
+     */
+    fun startFavoritesListener(userId: String, onFavoritesUpdated: (List<FavoriteItem>) -> Unit) {
+        val firestore = db ?: return
+        try {
+            favoritesListener?.remove()
+            favoritesListener = firestore.collection("users").document(userId)
+                .collection("favorites")
+                .orderBy("addedAt", Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.w(TAG, "Favorites listen failed for $userId", error)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        val favorites = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                FavoriteItem(
+                                    id = doc.id,
+                                    userId = doc.getString("userId") ?: userId,
+                                    targetId = doc.getString("targetId") ?: "",
+                                    titleAr = doc.getString("titleAr") ?: "",
+                                    titleEn = doc.getString("titleEn") ?: "",
+                                    type = doc.getString("type") ?: "anime",
+                                    bannerUrl = doc.getString("bannerUrl") ?: "",
+                                    rating = doc.getDouble("rating") ?: 9.0,
+                                    genre = doc.getString("genre") ?: "",
+                                    status = doc.getString("status") ?: "مستمر",
+                                    addedAt = doc.getLong("addedAt") ?: System.currentTimeMillis()
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        onFavoritesUpdated(favorites)
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start favorites listener for $userId", e)
+        }
+    }
+
+    /**
+     * Saves a favorite item to Firestore under users/{userId}/favorites/{targetId}
+     */
+    fun saveFavorite(userId: String, favorite: FavoriteItem) {
+        val firestore = db ?: return
+        val map = hashMapOf(
+            "userId" to userId,
+            "targetId" to favorite.targetId,
+            "titleAr" to favorite.titleAr,
+            "titleEn" to favorite.titleEn,
+            "type" to favorite.type,
+            "bannerUrl" to favorite.bannerUrl,
+            "rating" to favorite.rating,
+            "genre" to favorite.genre,
+            "status" to favorite.status,
+            "addedAt" to favorite.addedAt
+        )
+        firestore.collection("users").document(userId)
+            .collection("favorites").document(favorite.targetId).set(map, SetOptions.merge())
+            .addOnFailureListener { Log.w(TAG, "Failed to save favorite to Firestore", it) }
+    }
+
+    /**
+     * Deletes a favorite item from Firestore under users/{userId}/favorites/{targetId}
+     */
+    fun deleteFavorite(userId: String, targetId: String) {
+        val firestore = db ?: return
+        firestore.collection("users").document(userId)
+            .collection("favorites").document(targetId).delete()
+            .addOnFailureListener { Log.w(TAG, "Failed to delete favorite from Firestore", it) }
+    }
+
     fun cleanup() {
         postsListener?.remove()
         postsListener = null
@@ -413,6 +489,8 @@ class FirestoreManager {
         notifListener = null
         userListener?.remove()
         userListener = null
+        favoritesListener?.remove()
+        favoritesListener = null
     }
 
     companion object {
