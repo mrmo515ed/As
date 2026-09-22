@@ -23,27 +23,39 @@ service firebase.storage {
     }
 
     // Post images and videos
+    match /posts/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidSize() && isImageOrMedia();
+    }
     match /posts/{postId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn() && isValidSize();
+      allow write: if isSignedIn() && isValidSize() && isImageOrMedia();
     }
 
     // Chat attachments (voice notes, images, stickers)
+    match /chats/{chatId}/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidSize() && isImageOrMedia();
+    }
     match /chats/{chatId}/{allPaths=**} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && isValidSize();
+      allow write: if isSignedIn() && isValidSize() && isImageOrMedia();
     }
 
     // Story media
     match /stories/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isOwner(userId) && isValidSize();
+      allow write: if isOwner(userId) && isValidSize() && isImageOrMedia();
     }
 
     // Reels videos
+    match /reels/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidSize() && isImageOrMedia();
+    }
     match /reels/{reelId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn() && isValidSize();
+      allow write: if isSignedIn() && isValidSize() && isImageOrMedia();
     }
   }
 }

@@ -821,7 +821,9 @@ class AnimeRepository(private val context: Context) {
         val user = _currentUser.value ?: return false
         val cost = 100
         if (user.coins >= cost) {
-            _currentUser.value = user.copy(coins = user.coins - cost)
+            val updatedUser = user.copy(coins = user.coins - cost)
+            _currentUser.value = updatedUser
+            firestoreManager.saveUserProfile(updatedUser)
             _gameCharacters.value = _gameCharacters.value.map { c ->
                 if (c.id == charId) {
                     c.copy(
@@ -841,7 +843,9 @@ class AnimeRepository(private val context: Context) {
         val user = _currentUser.value ?: return false
         val targetChar = _gameCharacters.value.find { it.id == charId } ?: return false
         if (user.coins >= targetChar.unlockCostCoins) {
-            _currentUser.value = user.copy(coins = user.coins - targetChar.unlockCostCoins)
+            val updatedUser = user.copy(coins = user.coins - targetChar.unlockCostCoins)
+            _currentUser.value = updatedUser
+            firestoreManager.saveUserProfile(updatedUser)
             _gameCharacters.value = _gameCharacters.value.map { c ->
                 if (c.id == charId) c.copy(isUnlocked = true) else c
             }
@@ -854,10 +858,12 @@ class AnimeRepository(private val context: Context) {
         val user = _currentUser.value ?: return
         val mission = _gameMissions.value.find { it.id == missionId } ?: return
         if (!mission.isClaimed && mission.currentProgress >= mission.totalProgress) {
-            _currentUser.value = user.copy(
+            val updatedUser = user.copy(
                 coins = user.coins + mission.rewardCoins,
                 stars = user.stars + mission.rewardStars
             )
+            _currentUser.value = updatedUser
+            firestoreManager.saveUserProfile(updatedUser)
             _gameMissions.value = _gameMissions.value.map {
                 if (it.id == missionId) it.copy(isClaimed = true) else it
             }
@@ -972,11 +978,41 @@ class AnimeRepository(private val context: Context) {
     fun setUser(user: User?) {
         _currentUser.value = user
         if (user != null) {
+            // Stop previous user-scoped listeners
+            firestoreManager.stopAllChatListeners()
+            firestoreManager.stopFavoritesListener()
+            firestoreManager.stopNotificationsListener()
+
+            // Start new user-scoped listeners
             firestoreManager.startFavoritesListener(user.id) { remoteFavs ->
                 _favorites.value = remoteFavs
             }
+            firestoreManager.startNotificationsListener(user.id) { remoteNotifs ->
+                if (remoteNotifs.isNotEmpty()) {
+                    val remoteIds = remoteNotifs.map { it.id }.toSet()
+                    val filteredLocal = _notifications.value.filterNot { remoteIds.contains(it.id) }
+                    _notifications.value = remoteNotifs + filteredLocal
+                }
+            }
         } else {
+            // COMPLETE LOGOUT PURGE: Stop all listeners and wipe sensitive user state
+            firestoreManager.stopAllChatListeners()
+            firestoreManager.stopFavoritesListener()
+            firestoreManager.stopNotificationsListener()
+
             _favorites.value = emptyList()
+            _messages.value = emptyMap()
+            _notifications.value = emptyList()
+
+            // Reset conversation messages & reset default chats to prevent cross-account chat leaks
+            initDefaultChats()
+
+            // Restart public notifications listener
+            firestoreManager.startNotificationsListener(null) { remoteNotifs ->
+                if (remoteNotifs.isNotEmpty()) {
+                    _notifications.value = remoteNotifs
+                }
+            }
         }
     }
 

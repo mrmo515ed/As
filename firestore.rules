@@ -132,8 +132,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow read: if isSignedIn() && (
+          !exists(/databases/$(database)/documents/chats/$(chatId)) ||
+          !('participantIds' in get(/databases/$(database)/documents/chats/$(chatId)).data) ||
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.get('type', '') in ['public', 'world', 'guild'] ||
+          isAdmin()
+        );
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid && (
+          !exists(/databases/$(database)/documents/chats/$(chatId)) ||
+          !('participantIds' in get(/databases/$(database)/documents/chats/$(chatId)).data) ||
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.get('type', '') in ['public', 'world', 'guild'] ||
+          isAdmin()
+        );
         allow update: if isSignedIn() && (
           resource.data.senderId == request.auth.uid ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'status', 'reactions']) ||

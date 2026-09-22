@@ -478,6 +478,21 @@ class FirestoreManager {
             .addOnFailureListener { Log.w(TAG, "Failed to delete favorite from Firestore", it) }
     }
 
+    fun stopAllChatListeners() {
+        chatListeners.values.forEach { it.remove() }
+        chatListeners.clear()
+    }
+
+    fun stopNotificationsListener() {
+        notifListener?.remove()
+        notifListener = null
+    }
+
+    fun stopFavoritesListener() {
+        favoritesListener?.remove()
+        favoritesListener = null
+    }
+
     fun cleanup() {
         postsListener?.remove()
         postsListener = null
