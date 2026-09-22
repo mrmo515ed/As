@@ -1,0 +1,273 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function getUserData(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) ?
+        get(/databases/$(database)/documents/users/$(userId)).data : {};
+    }
+
+    function getUserRole() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) ?
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') : '';
+    }
+
+    function isOwnerEmail() {
+      return isSignedIn() && 'email' in request.auth.token &&
+        (request.auth.token.email.matches('(?i)m774545471@gmail\\.com'));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isOwnerEmail() ||
+        getUserRole() in ['admin', 'Owner', 'Developer', 'SuperAdministrator']
+      );
+    }
+
+    function isMod() {
+      return isAdmin() || (isSignedIn() && getUserRole() in ['Moderator', 'SeniorModerator']);
+    }
+
+    // --- Users & Profiles ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isUser(userId) || isAdmin();
+      // Protect sensitive fields like role, coins, stars, xp from arbitrary user elevation
+      allow update: if (isUser(userId) && (
+        // Regular user cannot elevate their role or coins directly unless admin
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified']) || isAdmin())
+      )) || isAdmin();
+      allow delete: if isAdmin();
+
+      // User subcollections (favorites, devices, sessions, inventory)
+      match /favorites/{favId} {
+        allow read, write: if isUser(userId) || isAdmin();
+      }
+      match /devices/{deviceId} {
+        allow read, write: if isUser(userId) || isAdmin();
+      }
+      match /sessions/{sessionId} {
+        allow read, write: if isUser(userId) || isAdmin();
+      }
+      match /inventory/{itemId} {
+        allow read: if isUser(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
+      match /{allUserData=**} {
+        allow read: if isUser(userId) || isAdmin();
+        allow write: if isUser(userId) || isAdmin();
+      }
+    }
+
+    // User states for multi-device sync
+    match /user_states/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow write: if isUser(userId) || isAdmin();
+    }
+
+    // --- Posts, Comments & Reactions ---
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      // Author can update own post text/media; others can only update likesCount / likedUserIds / commentsCount
+      allow update: if (isSignedIn() && (
+        (resource.data.authorId == request.auth.uid) ||
+        isMod() ||
+        // Like/Comment counter atomic updates
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedUserIds', 'commentsCount', 'sharesCount'])
+      ));
+      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isMod();
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isMod();
+        allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isMod();
+      }
+    }
+
+    match /stories/{storyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if (isSignedIn() && resource.data.userId == request.auth.uid) || isMod();
+      allow delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isMod();
+    }
+
+    match /reels/{reelId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if (isSignedIn() && (
+        resource.data.authorId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'commentsCount', 'sharesCount']) ||
+        isMod()
+      ));
+      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isMod();
+    }
+
+    // --- Realtime Chat System ---
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && (
+        !('participantIds' in resource.data) ||
+        request.auth.uid in resource.data.participantIds ||
+        resource.data.get('type', '') in ['public', 'world', 'guild'] ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        !('participantIds' in resource.data) ||
+        request.auth.uid in resource.data.participantIds ||
+        resource.data.get('type', '') in ['public', 'world', 'guild'] ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageTime', 'lastSenderId', 'unreadCount']) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'status', 'reactions']) ||
+          isAdmin()
+        );
+        allow delete: if (isSignedIn() && resource.data.senderId == request.auth.uid) || isMod();
+      }
+    }
+
+    match /chat_requests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.fromUserId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // --- Communities, Groups, Guilds & Worlds ---
+    match /groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.get('ownerId', '') == request.auth.uid ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membersCount', 'memberIds'])
+      );
+      allow delete: if isSignedIn() && (resource.data.get('ownerId', '') == request.auth.uid || isAdmin());
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow update: if (isSignedIn() && resource.data.senderId == request.auth.uid) || isMod();
+        allow delete: if (isSignedIn() && resource.data.senderId == request.auth.uid) || isMod();
+      }
+    }
+
+    match /communities/{communityId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isMod();
+
+      match /channels/{channelId}/messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if (isSignedIn() && resource.data.senderId == request.auth.uid) || isMod();
+      }
+    }
+
+    match /worlds/{worldId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isMod();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if (isSignedIn() && resource.data.senderId == request.auth.uid) || isMod();
+      }
+    }
+
+    // --- User-Scoped Notifications ---
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && (
+        resource.data.get('targetUserId', 'all') in ['all', request.auth.uid] ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.get('targetUserId', 'all') in ['all', request.auth.uid] ||
+        isAdmin()
+      );
+      allow delete: if isMod();
+    }
+
+    // --- Moderation, Reports & Broadcasts ---
+    match /reports/{reportId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isMod();
+    }
+
+    match /broadcasts/{bcId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Economy, Store & Games (Server / Admin authoritative) ---
+    match /store_items/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /game_profiles/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow create, update: if isUser(userId) || isAdmin();
+    }
+
+    match /game_leaderboard/{boardId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /game_admin_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /game_anti_cheat_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read, write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read, write: if isAdmin();
+    }
+
+    // --- System Status & Health ---
+    match /server_status/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /server_health/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /system_status/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
